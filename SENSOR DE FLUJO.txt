@@ -1,0 +1,255 @@
+#include <Wire.h>
+#include <SoftwareSerial.h>
+#include <LiquidCrystal_I2C.h>
+#include "RTClib.h"
+
+LiquidCrystal_I2C lcd(0x3f, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
+RTC_DS1307 RTC;
+
+#include <OneWire.h>                
+#include <DallasTemperature.h>
+
+OneWire ourWire(7);            
+DallasTemperature sensors(&ourWire); 
+ 
+SoftwareSerial bth(9, 8); // RX, TX
+
+volatile int pulsos; 
+int cont;
+unsigned int litros_hora; 
+unsigned char sensor = 2; 
+unsigned long tiempoAnterior; 
+unsigned long pulsosAcumulados; 
+
+char estado;
+float litros; 
+float costo;
+float cubos;
+float turriles;
+
+float temp;
+
+float enviador[4]={0,0,0,0};
+int antmes=11;
+   
+void setup()
+{
+  // Habilitamos comunicaciones y interrupciones
+  interrupts(); 
+  Serial.begin(9600);
+  bth.begin(38400);
+  //sensors.begin();  
+
+  //Configurar modulo bluetooth
+ /* Serial.print("AT");
+  delay(1000);
+  Serial.print("AT+NAME=");
+  Serial.print(NOMBRE);
+  delay(1000);
+  Serial.print("AT+BAUD=");
+  Serial.print(BPS);
+  delay(1000);
+  Serial.print("AT+PIN=");
+  Serial.print(PASS);
+  delay(1000);*/
+  
+  //configuracion RTC
+  Wire.begin(); // Inicia el puerto I2C
+  RTC.begin(); // Inicia la comunicación con el RTC
+  //RTC.adjust(DateTime(__DATE__, __TIME__)); // Establece la fecha y hora (Comentar una vez establecida la hora)
+ 
+  
+  //Asignamos sensor de flujo
+  pinMode(sensor, INPUT);
+  attachInterrupt(0,flujo, RISING); 
+
+   //Tiempo inicio del programa
+  tiempoAnterior = millis();
+
+  //Activar LCD
+  lcd.begin(16,2);
+  lcd.backlight();
+  lcd.setCursor(2, 0);
+  lcd.print("    HOLA   ");
+  lcd.setCursor(0, 1);
+  lcd.print("   HACKATHON  ");
+  delay(1000);
+  lcd.clear();
+}
+ 
+void loop ()
+{   
+  
+    DateTime now = RTC.now(); // Obtiene la fecha y hora del RTC
+    int ahora=now.month();
+    //Serial.println(ahora);
+    int pivote=ahora-antmes;
+    
+    sensors.requestTemperatures();   //Se envía el comando para leer la temperatura
+    temp= sensors.getTempCByIndex(0); //Se obtiene la temperatura en ºC
+
+    delay(1000);
+    
+    if(pivote>0)
+    {
+       /*Serial.println(pivote);
+       Serial.println(ahora);
+       Serial.println(antmes);*/
+       antmes++;
+       digitalWrite(13,LOW);
+       actualizando_mensaje();
+       pulsos=0;
+      
+    }
+     if(pivote==0)
+    {
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print("Actualizado");
+          mostrar_fecha();
+          ver_litros();
+          mostrar_litros();
+          mostrar_temperatura();
+ 
+        if( bth.available() > 0)
+        {
+          Serial.println("Datos enviados a android");
+          estado =  bth.read();
+          Serial.println(estado); 
+          if (estado == '0') 
+          {
+          digitalWrite(13, LOW);
+          Serial.println("NADA O");
+          }
+          if (estado == '1') 
+          {
+          digitalWrite(13, HIGH);
+          ver_litros();   
+          enviar_datos();
+          mandar_valores_android();
+          Serial.println("OK");
+          }
+          
+        }
+    }
+   
+}
+void ver_litros()
+{
+  if( millis() - tiempoAnterior > 1000)
+  {
+    tiempoAnterior = millis(); 
+    pulsosAcumulados += pulsos;
+    
+    //calculo de caudal
+    litros_hora = (pulsos * 60 / 6.67); 
+    
+    //calculo de litros
+    litros = pulsosAcumulados*1.0/400; 
+    
+    //Calulo de consumo
+    costo=litros*0.01887;
+
+    //Otros calculos de caudales
+    cubos=litros/1000;
+    turriles=litros/180;
+    pulsos = 0;  
+  }
+}
+void flujo() 
+{
+  pulsos++; 
+  cont=pulsos;
+  litros_hora = (cont * 60 / 6.67);
+}
+
+void mandar_valores_android()
+ {
+   bth.print('#');
+  for(int k=0; k<4; k++)
+  {
+     bth.print(enviador[k]);
+     bth.print('+');
+  }
+  bth.print('~'); 
+  bth.println();
+ delay(10);        
+}
+void enviar_datos()
+{
+  enviador[0]=litros;
+  enviador[1]=costo;
+  //enviador[2]=litrosPorHora;
+  enviador[3]=turriles;
+}
+void actualizando_mensaje()
+{
+  lcd.setCursor(0, 0);
+  lcd.print("Actualizando.");
+  delay(270);
+  
+  lcd.setCursor(0, 0);
+  lcd.print("Actualizando .");
+  delay(270);
+
+  lcd.setCursor(0, 0);
+  lcd.print("Actualizando  .");
+  delay(270);
+
+  lcd.setCursor(0, 0);
+  lcd.print("Actualizando    ");
+  delay(270);
+}
+void mostrar_fecha()
+{
+
+DateTime now = RTC.now(); // Obtiene la fecha y hora del RTC
+ 
+lcd.setCursor(0,1);
+lcd.print("Fecha:");
+lcd.print(now.year(), DEC);
+lcd.print("/");
+lcd.print(now.month(), DEC);
+lcd.print("/");
+lcd.print(now.day(), DEC);
+lcd.print("   ");
+delay(1000);
+lcd.setCursor(0,1);
+lcd.print("                     ");
+lcd.setCursor(0,1);
+lcd.print("Hora:");
+lcd.print(now.hour(), DEC);
+lcd.print(":");
+lcd.print(now.minute(), DEC);
+lcd.print(":");
+lcd.print(now.second(), DEC);
+delay(1000); // La información se actualiza cada 1 seg.
+lcd.setCursor(0,1);
+lcd.print("                     ");
+}
+void mostrar_litros()
+{ 
+lcd.setCursor(0,0);
+lcd.print("Litros:");
+lcd.print(litros);
+lcd.setCursor(0,1);
+lcd.print("Costo:");
+lcd.print(costo);
+delay(2000); 
+lcd.setCursor(0,0);
+lcd.print("                     ");
+lcd.setCursor(0,1);
+lcd.print("                     ");
+}
+
+void mostrar_temperatura()
+{ 
+lcd.setCursor(0,0);
+lcd.print("Temperatura:");
+lcd.print(temp);
+delay(2000); 
+lcd.setCursor(0,0);
+lcd.print("                     ");
+lcd.setCursor(0,1);
+lcd.print("                     ");
+}
