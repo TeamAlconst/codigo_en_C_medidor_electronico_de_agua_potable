@@ -1,2 +1,4 @@
-codigo en C para arduino
+codigo para Arduino en C
 Medidor electrico de Agua Potable
+-----------------------------
+Información de instalación
